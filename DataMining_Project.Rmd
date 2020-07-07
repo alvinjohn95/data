@@ -1,0 +1,150 @@
+ ---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+require(tidyverse)
+require(dplyr)
+train=read_csv('A:/Study/College/Graduate/2nd Year/4th Sem/Data Science II - Data Mining Algorithms And Applications/Project/cleantrain.csv')
+trainset=train[0:100000,]
+#write.csv(trainset,'D:\\Downloads\\train.csv\\train2.csv')
+
+trainset
+#trainclean=trainset[,-1]
+#trainclean=trainclean[apply(trainclean!=0, 1, all),]
+trainclean=trainset[trainset==0]=NA
+trainclean=trainset[complete.cases(trainset),]
+#write.csv(trainclean,'D:\\Downloads\\train.csv\\cleantrain.csv')
+summary(trainclean)
+trainclean
+trainclean1=trainclean%>%filter(abs(pickup_latitude) <90 & abs(pickup_longitude) < 90 & dropoff_latitude <90)
+trainclean1
+```
+
+
+```{r}
+require(geosphere)
+#distm(trainclean1[1:10,c(3,4)], trainclean1[1:10,c(5,6)], fun = distHaversine)
+distance=distHaversine(trainclean1[,c(4,5)],trainclean1[,c(6,7)])
+training=cbind(trainclean1,distance)
+training
+train_with_hour=training%>%mutate(start_hour=format(as.POSIXct(training$pickup_datetime, format="%Y-%m-%d %H:%M:%S"), format="%H.%M"),start_hour=as.numeric(start_hour))
+train_with_hour
+#train_with_density=train_with_hour%>%mutate(traffic_density= if (start_hour<08){traffic_density='Low'} 
+                                          #else if (start_hour>=8 | start_hour<=11) {traffic_density='High' }
+                                          #else if (start_hour>=11 | start_hour<=16) {traffic_density='Medium' }
+                                          #else if (start_hour>=16 | start_hour<=20) {traffic_density='High'}
+                                          #else  {traffic_density='Medium'})
+
+
+
+
+
+#train_with_density=train_with_hour%>%mutate(traffic_density= if_else(start_hour<08),'Low',
+                                     #if_else(start_hour>=8 | start_hour<=11),'High',
+                                     #if_else(start_hour>=11 | start_hour<=16),'Medium',
+                                     #if_else(start_hour>=16 | start_hour<=20),'High',
+                                   #  'Medium')
+
+traffic_density=train_with_hour%>%mutate(density=case_when(start_hour<7.00~'Low',(start_hour>=7.00&start_hour<=11.00)~'High',(start_hour>11.00&start_hour<16.00)~'Medium',(start_hour>=16.00&start_hour<=20.00)~'High',(start_hour>20.00)~'Medium'))
+traffic_density
+
+#density=case_when(train_with_hour$start_hour<8.00~'Low',
+#              (train_with_hour$start_hour>=8.00|train_with_hour$start_hour<=11.00)~'High',
+#              (train_with_hour$start_hour>11.00|train_with_hour$start_hour<16.00)~'Medium',
+#              (train_with_hour$start_hour>=16.00|train_with_hour$start_hour<=20.00)~'High',
+#              (train_with_hour$start_hour>20.00)~'Medium')
+
+
+
+#density
+## I am not getting the output for medium.
+
+```
+
+```{r}
+#install.packages('revgeo')
+require(revgeo)
+#traffic_density2=traffic_density
+#revgeo(traffic_density2$pickup_longitude, traffic_density2$pickup_latitude , provider = 'photon', output='frame') %>%filter(str_detect(zip, "^1"))
+
+##I filtered zip code here because there were several rows without zip code or zip codes like NY-10004
+
+
+```
+
+while (nrow(traffic_density)>0) {
+  main_sub_t <-  traffic_density[1:200,]
+  latlong <- main_sub_t %>% 
+    select(latitude, longitude) %>% 
+    unique() %>% 
+    mutate(index=row_number())
+
+
+
+```{r}
+train_data =traffic_density
+```
+ 
+
+```{r}
+train_data
+```
+
+```{r}
+test_data = read_csv('A:/Study/College/Graduate/2nd Year/4th Sem/Data Science II - Data Mining Algorithms And Applications/Project/test.csv')
+```
+
+```{r}
+train_data
+test_data
+```
+
+```{r}
+distance2=distHaversine(test_data[,c(3,4)],test_data[,c(5,6)])
+new_test_data = test_data%>%mutate(distance = distance2)
+n_test_data=new_test_data%>%mutate(start_hour=format(as.POSIXct(new_test_data$pickup_datetime, format="%Y-%m-%d %H:%M:%S"), format="%H.%M"),start_hour=as.numeric(start_hour))
+test_data2 = n_test_data%>%mutate(density=case_when(start_hour<7.00~'Low',(start_hour>=7.00&start_hour<=11.00)~'High',(start_hour>11.00&start_hour<16.00)~'Medium',(start_hour>=16.00&start_hour<=20.00)~'High',(start_hour>20.00)~'Medium'))
+
+test_data2
+```
+```{r}
+train_data%>%select(density)
+categorical = train_data%>%select_if(is.character)%>%select(-pickup_datetime)
+
+names(categorical)
+
+
+models = map(names(categorical), ~formula(paste('~', .x, '-1', sep ='')))
+rs = map(models, ~model.matrix(.x, data = train_data))
+
+all_dummies = Reduce(cbind, rs)%>%as_tibble()
+
+
+train_data2 = train_data %>%select_if(is.numeric)%>%bind_cols(all_dummies)
+
+anyNA(train_data)
+```
+
+```{r}
+frmla = fare_amount ~ distance + start_hour + density
+new_mdl = lm(frmla, data = train_data)
+summary(new_mdl)
+```
+
+```{r}
+predictions = predict(new_mdl, test_data2)
+
+test_data2 = test_data2%>%mutate(fare_amount = predictions)
+
+
+new_pred = test_data2%>%select(key,fare_amount)
+```
+
+```{r}
+write_csv(new_pred, 'A:/Study/College/Graduate/2nd Year/4th Sem/Data Science II - Data Mining Algorithms And Applications/Project/new_pred2.csv')
+```
+
